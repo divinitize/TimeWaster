@@ -10,9 +10,11 @@ public class SceneWindowDisplay
     private static bool hasDragged;
     private static Vector2 dragOffset;
     private static Vector2 initialMousePos;
-    private const string EditorPrefsKeyX = "TimeWasterBox_PosX";
-    private const string EditorPrefsKeyY = "TimeWasterBox_PosY";
+
+    private const string EditorPrefsKeyOffsetX = "TimeWasterBox_OffsetX";
+    private const string EditorPrefsKeyOffsetY = "TimeWasterBox_OffsetY";
     private const string EditorPrefsKeyInitialized = "TimeWasterBox_Initialized";
+
     private const float DragThreshold = 3f;
 
     static SceneWindowDisplay()
@@ -25,13 +27,11 @@ public class SceneWindowDisplay
         Handles.BeginGUI();
 
         float totalTime = TimeWasterTracker.GetTotalWastedTime();
-        string timeString = FormatTime(totalTime);
-        string label = $"♥ Life wasted waiting: {timeString}";
+        string label = $"♥ Life wasted waiting: {FormatTime(totalTime)}";
 
         GUIStyle labelStyle = new GUIStyle(GUI.skin.label)
         {
             fontSize = 14,
-            fontStyle = FontStyle.Normal,
             alignment = TextAnchor.MiddleLeft,
             padding = new RectOffset(6, 6, 4, 4),
             normal = { textColor = new Color(0.65f, 0.65f, 0.65f) },
@@ -42,10 +42,11 @@ public class SceneWindowDisplay
         float width = Mathf.Max(contentSize.x + 12f, 200f);
         float height = contentSize.y + 8f;
 
-        Vector2 position = GetSavedPosition(sceneView.position, width, height);
+        Vector2 position = GetDisplayPosition(sceneView.position, width, height);
         dragRect = new Rect(position.x, position.y, width, height);
 
         EditorGUIUtility.AddCursorRect(dragRect, MouseCursor.Pan);
+
         Event e = Event.current;
 
         if (e.type == EventType.MouseDown && dragRect.Contains(e.mousePosition))
@@ -61,63 +62,67 @@ public class SceneWindowDisplay
             if (isDragging)
             {
                 if (!hasDragged && dragRect.Contains(e.mousePosition))
-                {
                     TimeWasterDetailWindow.ShowWindow();
-                }
+
                 e.Use();
             }
+
             isDragging = false;
             hasDragged = false;
         }
         else if (isDragging && e.type == EventType.MouseDrag)
         {
-            float dragDistance = Vector2.Distance(initialMousePos, e.mousePosition);
-            if (dragDistance > DragThreshold)
-            {
+            if (Vector2.Distance(initialMousePos, e.mousePosition) > DragThreshold)
                 hasDragged = true;
-            }
 
-            dragRect.position = e.mousePosition - dragOffset;
+            Vector2 newPos = e.mousePosition - dragOffset;
 
-            dragRect.x = Mathf.Clamp(dragRect.x, 0, sceneView.position.width - dragRect.width);
-            dragRect.y = Mathf.Clamp(dragRect.y, 0, sceneView.position.height - dragRect.height);
+            // Clamp within Scene view
+            newPos.x = Mathf.Clamp(newPos.x, 0, sceneView.position.width - width);
+            newPos.y = Mathf.Clamp(newPos.y, 0, sceneView.position.height - height);
 
-            SavePosition(dragRect.position);
+            SaveOffset(sceneView.position, newPos, width, height);
             e.Use();
         }
 
         GUI.Label(dragRect, label, labelStyle);
+
         Handles.EndGUI();
     }
 
-    private static Vector2 GetSavedPosition(Rect sceneViewRect, float width, float height)
+    private static Vector2 GetDisplayPosition(Rect sceneViewRect, float width, float height)
     {
-        float defaultX = 10f;
-        float defaultY = sceneViewRect.height - height - 32f;
+        float sceneWidth = sceneViewRect.width;
+        float sceneHeight = sceneViewRect.height;
 
         bool isInitialized = EditorPrefs.GetBool(EditorPrefsKeyInitialized, false);
-
         if (!isInitialized)
         {
+            float defaultOffsetX = 10f;
+            float defaultOffsetY = 32f;
+
+            EditorPrefs.SetFloat(EditorPrefsKeyOffsetX, defaultOffsetX);
+            EditorPrefs.SetFloat(EditorPrefsKeyOffsetY, defaultOffsetY);
             EditorPrefs.SetBool(EditorPrefsKeyInitialized, true);
-            EditorPrefs.SetFloat(EditorPrefsKeyX, defaultX);
-            EditorPrefs.SetFloat(EditorPrefsKeyY, defaultY);
-            return new Vector2(defaultX, defaultY);
         }
 
-        float savedX = EditorPrefs.GetFloat(EditorPrefsKeyX, defaultX);
-        float savedY = EditorPrefs.GetFloat(EditorPrefsKeyY, defaultY);
+        float offsetX = EditorPrefs.GetFloat(EditorPrefsKeyOffsetX, 10f);
+        float offsetY = EditorPrefs.GetFloat(EditorPrefsKeyOffsetY, 32f);
 
-        float x = Mathf.Clamp(savedX, 0, sceneViewRect.width - width);
-        float y = Mathf.Clamp(savedY, 0, sceneViewRect.height - height);
+        // Bottom-left: X is offset from left, Y is offset from bottom
+        float x = offsetX;
+        float y = sceneHeight - height - offsetY;
 
         return new Vector2(x, y);
     }
 
-    private static void SavePosition(Vector2 position)
+    private static void SaveOffset(Rect sceneViewRect, Vector2 position, float width, float height)
     {
-        EditorPrefs.SetFloat(EditorPrefsKeyX, position.x);
-        EditorPrefs.SetFloat(EditorPrefsKeyY, position.y);
+        float offsetX = position.x;
+        float offsetY = sceneViewRect.height - position.y - height;
+
+        EditorPrefs.SetFloat(EditorPrefsKeyOffsetX, offsetX);
+        EditorPrefs.SetFloat(EditorPrefsKeyOffsetY, offsetY);
     }
 
     private static string FormatTime(float seconds)
